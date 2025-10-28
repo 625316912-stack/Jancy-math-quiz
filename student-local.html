@@ -44,16 +44,21 @@ const dbPromise=new Promise((res,rej)=>{
   const req=openDB(); req.onupgradeneeded=()=>req.result.createObjectStore(STORE,{keyPath:'id',autoIncrement:true});
   req.onsuccess=()=>res(req.result); req.onerror=()=>rej(req.error);
 });
-const addTest=async (rec)=>{const db=await dbPromise; const tx=db.transaction([STORE],'readwrite'); tx.objectStore(STORE).add(rec); return tx.complete;};
-const getAllTests=async ()=>{const db=await dbPromise; return db.transaction([STORE]).objectStore(STORE).getAll();};
+const addTest=async (rec)=>{
+  const db=await dbPromise; const tx=db.transaction([STORE],'readwrite'); tx.objectStore(STORE).add(rec); return tx.complete;
+};
+const getAllTests=async ()=>{
+  const db=await dbPromise; return db.transaction([STORE]).objectStore(STORE).getAll();
+};
 
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 function startQuiz(){
   studentName=document.getElementById('stuName').value.trim();
   if(!studentName){alert('Please enter your name');return;}
-  /* 优先抽历史错词 */
+  /* 优先抽历史错词 → 已修复空数组问题 */
   getAllTests().then(arr=>{
-    const histWrong=new Set(); arr.forEach(t=>t.wrongWords.forEach(w=>histWrong.add(w)));
+    const histWrong=new Set();
+    (Array.isArray(arr)?arr:[]).forEach(t=>t.wrongWords.forEach(w=>histWrong.add(w)));
     const wrongPool=rawWords.filter(w=>histWrong.has(w[0]));
     pool=shuffle(wrongPool.length>=20?wrongPool.slice(0,20):[...wrongPool,...shuffle(rawWords.filter(w=>!histWrong.has(w[0]))).slice(0,20-wrongPool.length)]).slice(0,20);
     wrong=[];idx=0;score=0;startTime=Date.now();
