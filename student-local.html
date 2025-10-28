@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Math Vocab Quiz – Local</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+<style>body{background:#f7f9fc}#box{max-width:700px;margin:0 auto}.correct{color:green}.wrong{color:red}</style>
+</head>
+<body>
+<div id="box" class="p-3">
+  <h4 class="text-center text-primary">Math Vocab Quiz</h4>
+  <div id="start">
+    <label>Your name:</label>
+    <input type="text" id="stuName" class="form-control mb-2">
+    <button class="btn btn-primary w-100" onclick="startQuiz()">Start (20 questions)</button>
+  </div>
+  <div id="quiz" style="display:none">
+    <p id="counter"></p>
+    <p id="question"></p>
+    <div id="choices" class="mb-2"></div>
+    <button id="nextBtn" class="btn btn-secondary w-100" onclick="nextQ()" disabled>Next</button>
+  </div>
+  <div id="result" style="display:none">
+    <h5>Result</h5>
+    <p id="rName"></p><p id="rDate"></p><p id="rTime"></p><p id="rScore"></p>
+    <p id="rWrong"></p>
+    <button class="btn btn-success mb-2 w-100" onclick="exportCSV()">Export CSV</button>
+    <button class="btn btn-outline-primary w-100" onclick="location.reload()">Try Again</button>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+const rawWords=[
+["acute triangle","锐角三角形"],["bar graph","柱状图"],["base number","底数"],
+["broken-line graph","折线图"],["capacity","容量"],["chord","弦"],
+["circle","圆"],["circumference","圆周长"],["composite","合数；组合图形"],["composite figure","组合图形"]
+];
+let pool=[],wrong=[],idx=0,score=0,startTime=0,studentName='';
+
+/* 本地数据库：IndexedDB 简易封装 */
+const DB_NAME='mathVocab', STORE='tests'; const openDB=()=>indexedDB.open(DB_NAME,1);
+const dbPromise=new Promise((res,rej)=>{
+  const req=openDB(); req.onupgradeneeded=()=>req.result.createObjectStore(STORE,{keyPath:'id',autoIncrement:true});
+  req.onsuccess=()=>res(req.result); req.onerror=()=>rej(req.error);
+});
+const addTest=async (rec)=>{const db=await dbPromise; const tx=db.transaction([STORE],'readwrite'); tx.objectStore(STORE).add(rec); return tx.complete;};
+const getAllTests=async ()=>{const db=await dbPromise; return db.transaction([STORE]).objectStore(STORE).getAll();};
+
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+function startQuiz(){
+  studentName=document.getElementById('stuName').value.trim();
+  if(!studentName){alert('Please enter your name');return;}
+  /* 优先抽历史错词 */
+  getAllTests().then(arr=>{
+    const histWrong=new Set(); arr.forEach(t=>t.wrongWords.forEach(w=>histWrong.add(w)));
+    const wrongPool=rawWords.filter(w=>histWrong.has(w[0]));
+    pool=shuffle(wrongPool.length>=20?wrongPool.slice(0,20):[...wrongPool,...shuffle(rawWords.filter(w=>!histWrong.has(w[0]))).slice(0,20-wrongPool.length)]).slice(0,20);
+    wrong=[];idx=0;score=0;startTime=Date.now();
+    document.getElementById('start').style.display='none';
+    document.getElementById('quiz').style.display='block';
+    showQuestion();
+  });
+}
+function showQuestion(){
+  const cur=pool[idx]; const right=cur[1];
+  let opts=new Set([right]);
+  while(opts.size<4){const w=rawWords[Math.floor(Math.random()*rawWords.length)][1]; if(w!==right)opts.add(w);}
+  opts=shuffle([...opts]);
+  document.getElementById('counter').textContent=`Q ${idx+1}/20`;
+  document.getElementById('question').textContent=`What is "${cur[0]}" ?`;
+  const box=document.getElementById('choices'); box.innerHTML='';
+  opts.forEach((o,i)=>{
+    const btn=document.createElement('button'); btn.className='btn btn-outline-primary w-100 mb-1';
+    btn.textContent=String.fromCharCode(65+i)+'. '+o;
+    btn.onclick=()=>selectChoice(btn,o,right); box.appendChild(btn);
+  });
+  document.getElementById('nextBtn').disabled=true;
+}
+function selectChoice(btn,sel,right){
+  [...document.querySelectorAll('#choices button')].forEach(b=>b.disabled=true);
+  if(sel===right){btn.classList.add('correct'); score++;}
+  else{btn.classList.add('wrong'); wrong.push(pool[idx]);}
+  document.getElementById('nextBtn').disabled=false;
+}
+async function nextQ(){
+  idx++; if(idx<pool.length){showQuestion();} else{await saveAndShow();}
+}
+async function saveAndShow(){
+  const dur=Math.round((Date.now()-startTime)/1000);
+  const date=new Date().toLocaleDateString('en-CA');
+  const time=new Date().toLocaleTimeString('en-GB');
+  const rec={name:studentName,date,time,score,total:20,duration:dur,wrongWords:wrong.map(w=>w[0])};
+  await addTest(rec);
+  showResult(rec);
+}
+function showResult(rec){
+  document.getElementById('quiz').style.display='none';
+  document.getElementById('result').style.display='block';
+  document.getElementById('rName').textContent='Name: '+rec.name;
+  document.getElementById('rDate').textContent='Date: '+rec.date+' '+rec.time;
+  document.getElementById('rTime').textContent='Duration: '+rec.duration+' s';
+  document.getElementById('rScore').textContent='Score: '+rec.score+'/20';
+  let html=''; if(rec.wrongWords.length){
+    html='<strong>Wrong words:</strong><ul>';
+    wrong.forEach(w=>html+=`<li>${w[0]} → ${w[1]}</li>`); html+='</ul>';
+  }else html='Excellent! All correct!';
+  document.getElementById('rWrong').innerHTML=html;
+}
+async function exportCSV(){
+  const all=await getAllTests(); let csv='Name,Date,Time,Score,Duration,Wrong\n';
+  all.forEach(t=>csv+=`${t.name},${t.date},${t.time},${t.score}/20,${t.duration}s,"${t.wrongWords.join('; ')}"\n`);
+  const blob=new Blob([csv],{type:'text/csv'}); const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download='report.csv'; a.click();
+}
+window.startQuiz=startQuiz; window.nextQ=nextQ; window.exportCSV=exportCSV;
+</script>
+</body>
+</html>

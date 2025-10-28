@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Admin Dashboard – Local</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+</head>
+<body class="p-4">
+<h4 class="text-primary">Admin Dashboard – Local Storage</h4>
+<div class="mb-3">
+  <button class="btn btn-primary" onclick="loadReport()">Refresh Report</button>
+  <button class="btn btn-secondary ms-2" onclick="exportCSV()">Export CSV</button>
+</div>
+<table class="table table-sm" id="reportTable"></table>
+
+<script>
+const DB_NAME='mathVocab', STORE='tests';
+const openDB=()=>indexedDB.open(DB_NAME,1);
+const dbPromise=new Promise((res,rej)=>{
+  const req=openDB(); req.onupgradeneeded=()=>req.result.createObjectStore(STORE,{keyPath:'id',autoIncrement:true});
+  req.onsuccess=()=>res(req.result); req.onerror=()=>rej(req.error);
+});
+const getAllTests=async ()=>{const db=await dbPromise; return db.transaction([STORE]).objectStore(STORE).getAll();};
+
+async function loadReport(){
+  const all=await getAllTests(); all.sort((a,b)=>new Date(b.date+' '+b.time)-new Date(a.date+' '+a.time));
+  let h='<thead><tr><th>Name</th><th>Date</th><th>Time</th><th>Score</th><th>Duration</th><th>Wrong</th></tr></thead><tbody>';
+  all.forEach(r=>h+=`<tr><td>${r.name}</td><td>${r.date}</td><td>${r.time}</td><td>${r.score}/20</td><td>${r.duration}s</td><td>${r.wrongWords.join('; ')}</td></tr>`);
+  h+='</tbody>'; document.getElementById('reportTable').innerHTML=h;
+}
+async function exportCSV(){
+  const all=await getAllTests(); let csv='Name,Date,Time,Score,Duration,Wrong\n';
+  all.forEach(t=>csv+=`${t.name},${t.date},${t.time},${t.score}/20,${t.duration}s,"${t.wrongWords.join('; ')}"\n`);
+  const blob=new Blob([csv],{type:'text/csv'}); const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download='all_reports.csv'; a.click();
+}
+window.onload=loadReport;
+</script>
+</body>
+</html>
